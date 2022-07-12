@@ -34,7 +34,7 @@ networking:
   serviceSubnet: "10.96.0.0/12"
   podSubnet: "PODSUBNET"
   dnsDomain: "cluster.local"
-kubernetesVersion: "v1.21.1"
+kubernetesVersion: "v1.24.2"
 apiServer:
   extraArgs:
     authorization-mode: "Node,RBAC"

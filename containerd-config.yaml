@@ -1,0 +1,5 @@
+  [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+    SystemdCgroup = true
+    
+  [plugins."io.containerd.grpc.v1.cri"]
+  sandbox_image = "k8s.gcr.io/pause:3.2"

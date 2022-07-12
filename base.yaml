@@ -7,6 +7,8 @@
       service: name=docker state=started
     - name: kubelet status
       service: name=kubelet state=started
+    - name: containerd status
+      service: name=containerd state=started
   tasks:
   - name: Remove existing Docker Kubernetes packages
     apt:
@@ -21,6 +23,10 @@
       - kubectl 
       - kubernetes-cni 
       - docker-ce 
+      - docker
+      - docker-engine
+      - containerd
+      - runc
 
   - name: Recursively remove directory
     ansible.builtin.file:
@@ -65,6 +71,13 @@
       state: present
       update_cache: true
 
+  - name: Recursively remove directory
+    ansible.builtin.file:
+      path: "{{ item }}"
+      state: directory
+      recurse: yes
+    with_items:
+      - /etc/apt/keyrings
 
   - name: Add an apt signing key for Docker
     apt_key:
@@ -102,6 +115,7 @@
       - apparmor-utils
       - docker-ce 
       - docker-ce-cli 
+      - containerd.io
       - "kubelet={{ kube_version }}-00"
       - "kubeadm={{ kube_version }}-00"
       - "kubectl={{ kube_version }}-00"
@@ -143,18 +157,6 @@
       name: docker
       enabled: yes
 
-  - name: Restart kubelet and docker daemon
-    service:
-      name: "{{ item }}"
-      daemon_reload: yes
-      state: restarted
-    with_items:
-      - docker
-      - kubelet
-    notify:
-      - docker status
-      - kubelet status
-
   - name: Remove useless packages from the cache
     apt:
       autoclean: yes
@@ -185,7 +187,22 @@
       - { src: /vagrant/approve-nodes.sh, dest: /etc/k8s-init-scripts/approve-nodes.sh }
       - { src: /vagrant/kubeadm-config.yaml, dest: /etc/k8s-init-scripts/kubeadm-config.yaml }
       - { src: /vagrant/metallb-config.yaml, dest: /etc/k8s-init-scripts/metallb-config.yaml }
-      - { src: /vagrant/enable-olm.sh, dest: /etc/k8s-init-scripts/enable-olm.sh }      
+      - { src: /vagrant/enable-olm.sh, dest: /etc/k8s-init-scripts/enable-olm.sh }
+      - { src: /vagrant/containerd-config.yaml, dest: /etc/containerd/config.toml }
       
+  - name: Restart kubelet and docker daemon
+    service:
+      name: "{{ item }}"
+      daemon_reload: yes
+      state: restarted
+    with_items:
+      - docker
+      - kubelet
+      - containerd
+    notify:
+      - docker status
+      - kubelet status
+      - containerd status
+
   - name: Pull Kubernetes images
     shell: kubeadm config images pull
