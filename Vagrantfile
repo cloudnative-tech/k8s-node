@@ -12,12 +12,12 @@ Vagrant.configure("2") do |config|
   config.hostmanager.enabled = true
   config.hostmanager.manage_guest = true
   config.vm.synced_folder ".", "/vagrant"
-  config.vm.provision :shell, :path => "install-ansible.sh"
+  config.vm.provision :shell, :path => "base/install-ansible.sh"
    
   config.vm.define ENV["HOSTNAME"] do |master|
     master.vm.hostname = ENV["HOSTNAME"]
     master.vm.provision "ansible_local" do |ansible|
-      ansible.playbook = "base.yaml"
+      ansible.playbook = "base/base.yaml"
       ansible.extra_vars = {
         node_ip: "127.0.0.1",
         kube_version: ENV["KUBE_VERSION"]
