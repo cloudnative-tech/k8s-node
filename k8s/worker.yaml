@@ -2,6 +2,13 @@
 - hosts: all
   become: true
   gather_facts: yes
+  handlers:
+    - name: docker status
+      service: name=docker state=started
+    - name: kubelet status
+      service: name=kubelet state=started
+    - name: containerd status
+      service: name=containerd state=started
   tasks:
   - name: Check war files in release
     local_action: stat path="/vagrant/.ssh/id_rsa.pub"
@@ -41,7 +48,22 @@
       flush: yes
  
   - name: Configure default IP route for service network
-    command: "ip route add 10.96.0.0/16 dev eth1 src {{ ansible_eth1.ipv4.address }}"
+    command: "ip route add 10.96.0.0/16 dev enp0s8 src {{ ansible_enp0s8.ipv4.address }}"
 
+  - name: Restart kubelet and docker daemon
+    service:
+      name: "{{ item }}"
+      daemon_reload: yes
+      state: restarted
+    with_items:
+      - docker
+      - kubelet
+      - containerd
+    notify:
+      - docker status
+      - kubelet status
+      - containerd status
+    
   - name: Run the join command
     shell: $(cat /etc/.vagrantdata/kubeadm-join)
+  

@@ -3,7 +3,7 @@ Vagrant.configure("2") do |config|
   config.vm.box = ENV["BOX_IMAGE"]
   config.vm.box_version = ENV["BOX_VERSION"]
   config.vm.box_check_update = false
-
+  config.ssh.forward_agent = true
   config.vm.provider ENV["PROVIDER"] do |l|
     l.cpus = ENV["NODE_CPU"]
     l.memory = ENV["NODE_MEMORY"]
