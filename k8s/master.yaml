@@ -2,11 +2,17 @@
 - hosts: all
   become: true
   gather_facts: yes
+  handlers:
+    - name: docker status
+      service: name=docker state=started
+    - name: kubelet status
+      service: name=kubelet state=started
+    - name: containerd status
+      service: name=containerd state=started
   tasks:
   - name: Check war files in release
     local_action: stat path="/vagrant/.ssh/id_rsa.pub"
     register: key_file
-
 
   - name: Set authorized key taken from file
     authorized_key:
@@ -46,22 +52,26 @@
       flush: yes
  
   - name: Configure default IP route for service network
-    command: "ip route add 10.96.0.0/16 dev eth1 src {{ ansible_eth1.ipv4.address }}"
-
-  - name: Create custom configuration
-    replace:
-      path: /etc/k8s-init-scripts/kubeadm-config.yaml
-      regexp: "{{ item.regexp }}"
-      replace: "{{ item.replace }}"
+    command: "ip route add 10.96.0.0/16 dev enp0s8 src {{ ansible_enp0s8.ipv4.address }}"
+  
+  - name: Restart kubelet and docker daemon
+    service:
+      name: "{{ item }}"
+      daemon_reload: yes
+      state: restarted
     with_items:
-      - { regexp: "IPADDRESS", replace: "{{ ansible_eth1.ipv4.address }}" }
-      - { regexp: "HOSTNAME", replace: "{{ ansible_hostname }}" }
-      - { regexp: "PODSUBNET", replace: "{{ pod_network_cidr }}" }
+      - docker
+      - kubelet
+      - containerd
+    notify:
+      - docker status
+      - kubelet status
+      - containerd status
       
   - name: Initialize the Kubernetes cluster using kubeadm
-    command: kubeadm init --config /etc/k8s-init-scripts/kubeadm-config.yaml
+    command: "kubeadm init --control-plane-endpoint {{ ansible_enp0s8.ipv4.address }} --apiserver-advertise-address={{ ansible_enp0s8.ipv4.address }} --pod-network-cidr={{ pod_network_cidr }}"
 
-  - name: Create new directory for Kubenetes config
+  - name: Create new directory for Kubernetes config
     ansible.builtin.file:
       path: "{{ item }}"
       state: directory
@@ -93,7 +103,7 @@
       group: vagrant
 
   - name: Untaint the master nodes
-    command: kubectl taint nodes --all node-role.kubernetes.io/master-
+    command: kubectl taint nodes --all node-role.kubernetes.io/control-plane-
   
   - name: Install calico pod network
     become: false
@@ -130,18 +140,17 @@
       replace: "{{ item.replace }}"
     with_items:
       - { regexp: "LB_IPPOOL", replace: "{{ lb_ippool }}" }
+    when: enable_metallb == 'yes'
 
   - name: Enable MetalLB
     become: false
-    command: "{{ item}}"
-    with_items:
-      - "kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.10.2/manifests/namespace.yaml"
-      - "kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.10.2/manifests/metallb.yaml"
-      - "kubectl apply -f /etc/k8s-init-scripts/metallb-config.yaml"
+    command: "sh /etc/k8s-init-scripts/setup-metallb.sh"
+    when: enable_metallb == 'yes'
   
   - name: Enable Ingress
     become: false
     command: "kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v0.47.0/deploy/static/provider/cloud/deploy.yaml"
+    when: enable_ingress == 'yes'
   
   - name: Install Helm
     become: true
@@ -173,3 +182,4 @@
       name: "approve_node_csrs"
       minute: "*/1"
       job: "sh /etc/k8s-init-scripts/approve-nodes.sh"
+  

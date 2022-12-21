@@ -7,6 +7,8 @@
       service: name=docker state=started
     - name: kubelet status
       service: name=kubelet state=started
+    - name: containerd status
+      service: name=containerd state=started
   tasks:
   - name: Remove existing Docker Kubernetes packages
     apt:
@@ -21,6 +23,10 @@
       - kubectl 
       - kubernetes-cni 
       - docker-ce 
+      - docker
+      - docker-engine
+      - containerd
+      - runc
 
   - name: Recursively remove directory
     ansible.builtin.file:
@@ -65,6 +71,13 @@
       state: present
       update_cache: true
 
+  - name: Recursively remove directory
+    ansible.builtin.file:
+      path: "{{ item }}"
+      state: directory
+      recurse: yes
+    with_items:
+      - /etc/apt/keyrings
 
   - name: Add an apt signing key for Docker
     apt_key:
@@ -102,10 +115,11 @@
       - apparmor-utils
       - docker-ce 
       - docker-ce-cli 
+      - containerd.io
       - "kubelet={{ kube_version }}-00"
       - "kubeadm={{ kube_version }}-00"
       - "kubectl={{ kube_version }}-00"
-      - kubernetes-cni=0.8.7-00
+      - kubernetes-cni
     notify:
       - docker status
 
@@ -133,27 +147,10 @@
     command: swapoff -a
     when: ansible_swaptotal_mb > 0
 
-  - name: Deploy Docker daemon.json.
-    copy:
-      src: daemon.json
-      dest: /etc/docker/daemon.json
-
   - name: Enable service docker
     ansible.builtin.systemd:
       name: docker
       enabled: yes
-
-  - name: Restart kubelet and docker daemon
-    service:
-      name: "{{ item }}"
-      daemon_reload: yes
-      state: restarted
-    with_items:
-      - docker
-      - kubelet
-    notify:
-      - docker status
-      - kubelet status
 
   - name: Remove useless packages from the cache
     apt:
@@ -179,13 +176,30 @@
       dest: "{{ item.dest }}"
       mode: '0755'
     with_items:
-      - { src: /vagrant/master.yaml, dest: /etc/k8s-scripts/master.yaml }
-      - { src: /vagrant/worker.yaml, dest: /etc/k8s-scripts/worker.yaml }
-      - { src: /vagrant/set-custom-rc.sh, dest: /etc/k8s-init-scripts/set-custom-rc.sh }
-      - { src: /vagrant/approve-nodes.sh, dest: /etc/k8s-init-scripts/approve-nodes.sh }
-      - { src: /vagrant/kubeadm-config.yaml, dest: /etc/k8s-init-scripts/kubeadm-config.yaml }
-      - { src: /vagrant/metallb-config.yaml, dest: /etc/k8s-init-scripts/metallb-config.yaml }
-      - { src: /vagrant/enable-olm.sh, dest: /etc/k8s-init-scripts/enable-olm.sh }      
+      - { src: /vagrant/base/daemon.json, dest: /etc/docker/daemon.json }
+      - { src: /vagrant/k8s/master.yaml, dest: /etc/k8s-scripts/master.yaml }
+      - { src: /vagrant/k8s/worker.yaml, dest: /etc/k8s-scripts/worker.yaml }
+      - { src: /vagrant/base/set-custom-rc.sh, dest: /etc/k8s-init-scripts/set-custom-rc.sh }
+      - { src: /vagrant/k8s/approve-nodes.sh, dest: /etc/k8s-init-scripts/approve-nodes.sh }
+      - { src: /vagrant/k8s/metallb-config.yaml, dest: /etc/k8s-init-scripts/metallb-config.yaml }
+      - { src: /vagrant/k8s/enable-olm.sh, dest: /etc/k8s-init-scripts/enable-olm.sh }
+      - { src: /vagrant/k8s/setup-metallb.sh, dest: /etc/k8s-init-scripts/setup-metallb.sh }
+      - { src: /vagrant/base/containerd-config.yaml, dest: /etc/containerd/config.toml }
       
+      
+  - name: Restart kubelet and docker daemon
+    service:
+      name: "{{ item }}"
+      daemon_reload: yes
+      state: restarted
+    with_items:
+      - docker
+      - kubelet
+      - containerd
+    notify:
+      - docker status
+      - kubelet status
+      - containerd status
+
   - name: Pull Kubernetes images
     shell: kubeadm config images pull
